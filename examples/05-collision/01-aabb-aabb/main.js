@@ -19,11 +19,15 @@ const renderer = new UnlitRenderer(canvas);
 await renderer.initialize();
 
 const loader = new GLTFLoader();
-await loader.load(new URL('./scene/scene.gltf', import.meta.url));
+await loader.load(new URL('./scene/travatla.gltf', import.meta.url));
 
 const scene = loader.loadScene();
 const camera = loader.loadNode('Camera');
-camera.addComponent(new FirstPersonController(camera, canvas));
+camera.addComponent(new FirstPersonController(camera, canvas, {
+    acceleration: 150,
+    maxSpeed: 15,
+    pointerSensitivity: 0.003,
+}));
 camera.aabb = {
     min: [-0.2, -0.2, -0.2],
     max: [0.2, 0.2, 0.2],

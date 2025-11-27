@@ -37,3 +37,4 @@ function resize({ displaySize: { width, height }}) {
 
 new ResizeSystem({ canvas, resize }).start();
 new UpdateSystem({ update, render }).start();
+    

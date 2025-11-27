@@ -62,6 +62,32 @@ export class UnlitRenderer extends BaseRenderer {
         });
 
         this.recreateDepthTexture();
+        this.createDefaultTexture();
+    }
+
+    createDefaultTexture() {
+        // Create a 1x1 white texture as default
+        const textureData = new Uint8Array([255, 255, 255, 255]);
+        
+        const texture = this.device.createTexture({
+            size: [1, 1, 1],
+            format: 'rgba8unorm',
+            usage: GPUTextureUsage.TEXTURE_BINDING | GPUTextureUsage.COPY_DST,
+        });
+
+        this.device.queue.writeTexture(
+            { texture },
+            textureData,
+            { bytesPerRow: 4 },
+            { width: 1, height: 1 }
+        );
+
+        const sampler = this.device.createSampler({
+            minFilter: 'nearest',
+            magFilter: 'nearest',
+        });
+
+        this.defaultTexture = { gpuTexture: texture.createView(), gpuSampler: sampler };
     }
 
     recreateDepthTexture() {
@@ -86,7 +112,7 @@ export class UnlitRenderer extends BaseRenderer {
         const modelBindGroup = this.device.createBindGroup({
             layout: this.pipeline.getBindGroupLayout(1),
             entries: [
-                { binding: 0, resource: modelUniformBuffer },
+                { binding: 0, resource: { buffer: modelUniformBuffer } },
             ],
         });
 
@@ -108,7 +134,7 @@ export class UnlitRenderer extends BaseRenderer {
         const cameraBindGroup = this.device.createBindGroup({
             layout: this.pipeline.getBindGroupLayout(0),
             entries: [
-                { binding: 0, resource: cameraUniformBuffer },
+                { binding: 0, resource: { buffer: cameraUniformBuffer } },
             ],
         });
 
@@ -135,7 +161,10 @@ export class UnlitRenderer extends BaseRenderer {
             return this.gpuObjects.get(material);
         }
 
-        const baseTexture = this.prepareTexture(material.baseTexture);
+        // Use material's texture if available, otherwise use default white texture
+        const baseTexture = material.baseTexture 
+            ? this.prepareTexture(material.baseTexture)
+            : this.defaultTexture;
 
         const materialUniformBuffer = this.device.createBuffer({
             size: 16,
@@ -145,7 +174,7 @@ export class UnlitRenderer extends BaseRenderer {
         const materialBindGroup = this.device.createBindGroup({
             layout: this.pipeline.getBindGroupLayout(2),
             entries: [
-                { binding: 0, resource: materialUniformBuffer },
+                { binding: 0, resource: { buffer: materialUniformBuffer } },
                 { binding: 1, resource: baseTexture.gpuTexture },
                 { binding: 2, resource: baseTexture.gpuSampler },
             ],
@@ -166,7 +195,7 @@ export class UnlitRenderer extends BaseRenderer {
             colorAttachments: [
                 {
                     view: this.context.getCurrentTexture(),
-                    clearValue: [1, 1, 1, 1],
+                    clearValue: [0.6, 0.8, 0.95, 1],
                     loadOp: 'clear',
                     storeOp: 'store',
                 },
