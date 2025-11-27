@@ -3,21 +3,113 @@
 <head>
     <meta charset="utf-8">
     <title>Sheep Game</title>
+
     <script type="importmap">
     {
         "imports": {
-            "engine/": "../../../engine/",
-            "dat": "../../../lib/dat.js",
-            "glm": "../../../lib/glm.js"
+            "engine/": "../engine/",
+            "dat": "../lib/dat.js",
+            "glm": "../lib/glm.js"
         }
     }
     </script>
-    <script type="module" src="main.js"></script>
+
     <link rel="stylesheet" href="../engine/style.css">
+    <link rel="stylesheet" href="style.css">
 </head>
 <body>
+    <!-- Start screen -->
+    <div id="startScreen">
+        <div class="panel">
+            <h1>Sheep Game</h1>
+            <p class="subtitle">Ti si pastir. Preženi vse ovce v ogrado v najkrajšem možnem času!</p>
+
+            <div class="controls">
+                <h2>Upravljanje</h2>
+                <ul>
+                    <li><strong>W A S D</strong> – premikanje</li>
+                    <li><strong>Miška</strong> – obračanje pogleda</li>
+                    <li><strong>P</strong> – pavza</li>
+                </ul>
+            </div>
+
+            <div class="buttons">
+                <button id="btnStart">Start</button>
+            </div>
+
+            <div class="hint">Klikni »Start« in nato klikni v okno igre, da se miška zaklene.</div>
+        </div>
+    </div>
+
+    <!-- HUD -->
+    <div id="hud">
+        <div class="hud-left">
+            <div class="hud-box">
+                <div class="hud-label">Ovce</div>
+                <div class="hud-value">
+                    <span id="hud-sheep-herded">0</span>
+                    <span class="hud-separator">/</span>
+                    <span id="hud-sheep-total">0</span>
+                </div>
+            </div>
+
+            <div class="hud-box">
+                <div class="hud-label">Čas</div>
+                <div class="hud-value" id="hud-time">00:00</div>
+            </div>
+        </div>
+
+        <div class="hud-right">
+            <div class="hud-box objective">
+                <div class="hud-label">Cilj</div>
+                <div class="hud-objective-text" id="hud-objective">
+                    Preženi vse ovce v ogrado.
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Pause menu -->
+    <div id="pauseMenu" class="hidden">
+        <div class="panel">
+            <h2>Premor</h2>
+            <p>Igra je na pavzi.</p>
+            <div class="buttons">
+                <button id="pause-resume">Nadaljuj</button>
+                <button id="pause-restart">Začni znova</button>
+            </div>
+            <div class="hint">Pritisni Esc ali P za zapiranje.</div>
+        </div>
+    </div>
+
+    <!-- Level complete overlay -->
+    <div id="levelComplete" class="hidden">
+        <div class="panel">
+            <h2>Level zaključen!</h2>
+            <p id="levelComplete-text">Vse ovce so v ogradi.</p>
+            <p class="time-row">
+                Čas: <span id="levelComplete-time">00:00</span>
+            </p>
+            <button id="levelComplete-restart">Igraj znova</button>
+        </div>
+    </div>
+
+    <!-- Igra (canvas) -->
     <div class="fullscreen no-touch pixelated">
         <canvas></canvas>
     </div>
+
+    <!-- Start igre -->
+    <script type="module">
+        import { startGame } from './main.js';
+
+        const btnStart = document.getElementById('btnStart');
+        const startScreen = document.getElementById('startScreen');
+
+        btnStart.addEventListener('click', () => {
+            startScreen.style.display = 'none';
+            startGame();
+        });
+    </script>
 </body>
 </html>
