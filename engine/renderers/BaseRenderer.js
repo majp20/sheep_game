@@ -1,4 +1,5 @@
 import * as WebGPU from '../WebGPU.js';
+import { mipLevelCount, generateMipmaps2D } from '../WebGPUMipmaps.js';
 
 import { createVertexBuffer } from '../core/VertexUtils.js';
 
@@ -26,12 +27,23 @@ export class BaseRenderer {
             return this.gpuObjects.get(image);
         }
 
+        const size = [image.width, image.height];
+        const mipLevels = mipLevelCount(size);
+
         const gpuTexture = WebGPU.createTexture(this.device, {
             source: image,
             format: isSRGB ? 'rgba8unorm-srgb' : 'rgba8unorm',
+            mipLevelCount: mipLevels,
+            usage: GPUTextureUsage.TEXTURE_BINDING | 
+                   GPUTextureUsage.COPY_DST | 
+                   GPUTextureUsage.RENDER_ATTACHMENT,
         });
 
-        const gpuObjects = { gpuTexture };
+        // Generate mipmaps
+        generateMipmaps2D(this.device, gpuTexture);
+
+        const gpuTextureView = gpuTexture.createView();
+        const gpuObjects = { gpuTexture: gpuTextureView };
         this.gpuObjects.set(image, gpuObjects);
         return gpuObjects;
     }
