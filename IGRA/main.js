@@ -62,7 +62,7 @@ export async function startGame() {
 
     let elapsedTime = 0;   // v sekundah (če je dt v ms, poglej komentar v update)
     let sheepHerded = 0;
-    let sheepTotal = 0;
+    let sheepTotal = 14;
     let levelFinished = false;
     let paused = false;
 
@@ -128,8 +128,14 @@ export async function startGame() {
         if (pauseMenu) {
             if (paused) {
                 pauseMenu.classList.remove('hidden');
+                // Release pointer lock when pausing
+                if (document.pointerLockElement === canvas) {
+                    document.exitPointerLock();
+                }
             } else {
                 pauseMenu.classList.add('hidden');
+                // Request pointer lock when resuming
+                canvas.requestPointerLock();
             }
         }
     }
@@ -276,7 +282,6 @@ export async function startGame() {
             entity.aabb.min[2] -= xzIncrease;
             entity.aabb.max[2] += xzIncrease;
             
-            console.log('Sheep entity with collision:', entity);
         } else {
             // Mark all entities with meshes as static for collision
             if (!entity.customProperties) {
@@ -288,6 +293,10 @@ export async function startGame() {
 
     // Add camera to scene for physics calculations
     scene.push(camera);
+    
+    // Initialize HUD with sheep count
+    setSheepCounts(0, 12); // 0 herded, 12 total sheep
+    
     refreshHud();
 
     function update(time, dt) {

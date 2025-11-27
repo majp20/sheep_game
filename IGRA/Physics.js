@@ -23,20 +23,8 @@ export class Physics {
                             const entityIndex = this.scene.indexOf(entity);
                             const otherIndex = this.scene.indexOf(other);
                             if (entityIndex < otherIndex) {
-                                // Debug: show transformed AABBs
-                                const aBox = this.getTransformedAABB(entity);
-                                const bBox = this.getTransformedAABB(other);
-                                console.log('\nChecking dynamic pair:');
-                                console.log('  A min:', `[${aBox.min[0].toFixed(2)}, ${aBox.min[1].toFixed(2)}, ${aBox.min[2].toFixed(2)}]`,
-                                           'max:', `[${aBox.max[0].toFixed(2)}, ${aBox.max[1].toFixed(2)}, ${aBox.max[2].toFixed(2)}]`);
-                                console.log('  B min:', `[${bBox.min[0].toFixed(2)}, ${bBox.min[1].toFixed(2)}, ${bBox.min[2].toFixed(2)}]`,
-                                           'max:', `[${bBox.max[0].toFixed(2)}, ${bBox.max[1].toFixed(2)}, ${bBox.max[2].toFixed(2)}]`);
-                                
-                                const collided = this.resolveCollision(entity, other);
-                                console.log('  Collision:', collided);
-                                if (collided) {
-                                    console.log('>>> Dynamic-Dynamic collision RESOLVED!');
-                                }
+                                // Resolve collision between two dynamic entities
+                                this.resolveCollision(entity, other);
                             }
                         }
                     }
@@ -124,13 +112,7 @@ export class Physics {
         const isColliding = this.aabbIntersection(aBox, bBox);
         
         // Debug logging for dynamic-dynamic collisions
-        if (a.customProperties?.isDynamic && b.customProperties?.isDynamic) {
-            console.log('Checking dynamic-dynamic collision:');
-            console.log('  Entity A box:', aBox);
-            console.log('  Entity B box:', bBox);
-            console.log('  Is colliding:', isColliding);
-        }
-        
+ 
         if (!isColliding) {
             return false;
         }
@@ -171,7 +153,15 @@ export class Physics {
             return false;
         }
 
+        // Store original Y position to prevent vertical displacement
+        const originalY = transform.translation[1];
+        
         vec3.add(transform.translation, transform.translation, minDirection);
+        
+        // Lock Y-axis for entities (prevents floating/sinking)
+        // Only apply X and Z corrections
+        transform.translation[1] = originalY;
+        
         return true;
     }
 

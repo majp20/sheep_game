@@ -47,6 +47,8 @@ export class FirstPersonController {
                 doc.addEventListener('pointermove', this.pointermoveHandler);
             } else {
                 doc.removeEventListener('pointermove', this.pointermoveHandler);
+                // Clear all keys when pointer lock is released
+                this.keys = {};
             }
         });
     }

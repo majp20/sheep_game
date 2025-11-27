@@ -1,5 +1,6 @@
 import { GLTFLoader } from 'engine/loaders/GLTFLoader.js';
 import { Entity, Transform, Model } from 'engine/core/core.js';
+import { SheepController } from './Sheep.controller.js';
 
 // Helper function to deep clone an entity and its hierarchy
 function cloneEntity(originalEntity) {
@@ -46,7 +47,9 @@ export async function loadSheep(scene) {
         [-11, 2.7, 5],
         [10, 2.7, 33],
         [-85, 2.7, -75],
-        [30, 2.7, -20]
+        [30, 2.7, -20],
+        [10, 2.7, -20],
+        [2, 2.7, -110]
     ];
 
     const allSheepNodes = new Set();
@@ -73,6 +76,13 @@ export async function loadSheep(scene) {
         const sheepTransform = sheep.getComponentOfType(Transform);
         sheepTransform.translation = sheepPositions[i];
         sheepTransform.scale = [0.1, 0.1, 0.1];
+
+        // Add SheepController to make it move
+        sheep.addComponent(new SheepController(sheep, {
+            moveSpeed: 2,
+            directionChangeInterval: 3,
+            mapBounds: { min: [-115, -115], max: [33, 33] }
+        }));
 
         // Add all nodes from this sheep to the scene
         for (const node of clonedSheep) {
