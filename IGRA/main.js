@@ -128,14 +128,8 @@ export async function startGame() {
         if (pauseMenu) {
             if (paused) {
                 pauseMenu.classList.remove('hidden');
-                // Release pointer lock when pausing
-                if (document.pointerLockElement === canvas) {
-                    document.exitPointerLock();
-                }
             } else {
                 pauseMenu.classList.add('hidden');
-                // Request pointer lock when resuming
-                canvas.requestPointerLock();
             }
         }
     }
