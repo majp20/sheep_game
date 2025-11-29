@@ -24,11 +24,10 @@ export async function startGame() {
 
     const scene = loader.loadScene();
     const camera = loader.loadNode('Camera');
+    const bgMusic = document.getElementById('bg-music');
 
-    // Load sheep
     const sheepNodes = await loadSheep(scene);
 
-    // Set player entity reference for all sheep (for flee behavior)
     for (const sheep of sheepNodes) {
         const sheepController = sheep.components?.find(c => c.constructor.name === 'SheepController');
         if (sheepController) {
@@ -36,9 +35,8 @@ export async function startGame() {
         }
     }
 
-    // Increase camera far clipping plane for better visibility
     const cameraComponent = camera.getComponentOfType(Camera);
-    cameraComponent.far = 500; // Increase from default 100 to 500
+    cameraComponent.far = 500;
 
     const controller = new FirstPersonController(camera, canvas, {
         acceleration: 90,
@@ -47,7 +45,6 @@ export async function startGame() {
     });
     camera.addComponent(controller);
     
-    // Raycast handler for launching sheep
     controller.onRaycast = (origin, rayEnd, direction) => {
         let closestSheep = null;
         let closestDistance = Infinity;
@@ -55,26 +52,22 @@ export async function startGame() {
         let bestAlignment = -Infinity;
         let hitCount = 0;
         
-        // Calculate max distance from rayEnd
         const maxDistance = Math.sqrt(
             (rayEnd[0] - origin[0]) ** 2 +
             (rayEnd[1] - origin[1]) ** 2 +
             (rayEnd[2] - origin[2]) ** 2
         );
         
-        // Check ray intersection with all sheep
         for (const sheep of sheepNodes) {
             const sheepTransform = sheep.getComponentOfType(Transform);
             if (!sheepTransform || !sheep.aabb) continue;
             
-            // Ray-AABB intersection test
             const t = rayAABBIntersection(origin, direction, sheep.aabb, sheepTransform);
             if (t !== null && t <= maxDistance) {
                 hitCount++;
                 
                 const sheepPos = sheepTransform.translation;
                 
-                // Calculate distance from ray to sheep center
                 const rayPoint = [
                     origin[0] + direction[0] * Math.max(t, 0),
                     origin[1] + direction[1] * Math.max(t, 0),
@@ -86,7 +79,6 @@ export async function startGame() {
                 const dz = rayPoint[2] - sheepPos[2];
                 const distToCenter = Math.sqrt(dx*dx + dy*dy + dz*dz);
                 
-                // Calculate alignment with look direction (dot product)
                 const toSheep = [
                     sheepPos[0] - origin[0],
                     sheepPos[1] - origin[1],
@@ -100,8 +92,6 @@ export async function startGame() {
                 }
                 const alignment = toSheep[0] * direction[0] + toSheep[1] * direction[1] + toSheep[2] * direction[2];
                 
-                // Pick sheep with best alignment to look direction (what you're aiming at)
-                // Only consider sheep in front of camera (alignment > 0.5) to avoid hitting sheep behind
                 if (alignment > 0.5 && alignment > bestAlignment) {
                     bestAlignment = alignment;
                     closestDistToCenter = distToCenter;
@@ -111,29 +101,23 @@ export async function startGame() {
             }
         }
         
-        // Launch the closest sheep if found
         if (closestSheep) {
-            // Try to find SheepController on this node
             let sheepController = closestSheep.components?.find(c => c.constructor.name === 'SheepController');
             
-            // If not found, it might be a child mesh - search parent nodes
             if (!sheepController) {
-                // Search all sheep nodes to find the one with a controller
                 for (const sheep of sheepNodes) {
                     const controller = sheep.components?.find(c => c.constructor.name === 'SheepController');
                     if (controller) {
-                        // Check if the hit node is this sheep or one of its children
                         const sheepTransform = sheep.getComponentOfType(Transform);
                         const hitTransform = closestSheep.getComponentOfType(Transform);
                         
-                        // If positions are very close, it's the same sheep entity
                         if (hitTransform && sheepTransform) {
                             const dx = hitTransform.translation[0] - sheepTransform.translation[0];
                             const dy = hitTransform.translation[1] - sheepTransform.translation[1];
                             const dz = hitTransform.translation[2] - sheepTransform.translation[2];
                             const dist = Math.sqrt(dx*dx + dy*dy + dz*dz);
                             
-                            if (dist < 0.1) { // Same position = same sheep
+                            if (dist < 0.1) {
                                 sheepController = controller;
                                 break;
                             }
@@ -143,15 +127,12 @@ export async function startGame() {
             }
             
             if (sheepController) {
-                // Launch sheep (allow re-launching if already launched)
                 sheepController.launch(direction, 20);
             }
         }
     };
     
-    // Ray-AABB intersection function
     function rayAABBIntersection(origin, direction, aabb, transform) {
-        // Get the center and half-extents of AABB
         const center = [
             (aabb.min[0] + aabb.max[0]) / 2,
             (aabb.min[1] + aabb.max[1]) / 2,
@@ -163,7 +144,6 @@ export async function startGame() {
             (aabb.max[2] - aabb.min[2]) / 2
         ];
         
-        // Transform to world space (AABB center + entity position)
         const worldCenter = [
             center[0] + transform.translation[0],
             center[1] + transform.translation[1],
@@ -186,7 +166,6 @@ export async function startGame() {
         
         for (let i = 0; i < 3; i++) {
             if (Math.abs(direction[i]) < 0.0001) {
-                // Ray is parallel to slab
                 if (origin[i] < worldMin[i] || origin[i] > worldMax[i]) {
                     return null;
                 }
@@ -207,18 +186,16 @@ export async function startGame() {
     }
     
     camera.aabb = {
-        min: [-0.22, -2.6, -0.23],  // Wider and taller collision box for better detection
-        max: [0.22, 0.4, 0.23],     
+        min: [-0.22, -2.6, -0.23],
+        max: [0.22, 0.4, 0.23],
     };
     
-    // Mark camera as dynamic for collision detection
     camera.customProperties = { isDynamic: true };
 
-    // HUD + overlay elementi
     const hudSheepHerded = document.getElementById('hud-sheep-herded');
     const hudSheepTotal = document.getElementById('hud-sheep-total');
     const hudTime = document.getElementById('hud-time');
-        const hudObjective = document.getElementById('hud-objective');
+    const hudObjective = document.getElementById('hud-objective');
 
     const levelCompleteOverlay = document.getElementById('levelComplete');
     const levelCompleteText = document.getElementById('levelComplete-text');
@@ -229,64 +206,65 @@ export async function startGame() {
     const pauseResumeBtn = document.getElementById('pause-resume');
     const pauseRestartBtn = document.getElementById('pause-restart');
 
-    let elapsedTime = 0;   // v sekundah (če je dt v ms, poglej komentar v update)
+    let elapsedTime = 0;
     let sheepHerded = 0;
     let sheepTotal = 14;
     let levelFinished = false;
     let paused = false;
 
     function formatTime(totalSeconds) {
-    const sec = Math.max(0, totalSeconds);
-    const minutes = Math.floor(sec / 60);
-    const seconds = Math.floor(sec % 60);
-    const mm = String(minutes).padStart(2, '0');
+        const sec = Math.max(0, totalSeconds);
+        const minutes = Math.floor(sec / 60);
+        const seconds = Math.floor(sec % 60);
+        const mm = String(minutes).padStart(2, '0');
         const ss = String(seconds).padStart(2, '0');
         return `${mm}:${ss}`;
     }
 
     function refreshHud() {
-    if (hudTime) {
-        hudTime.textContent = formatTime(elapsedTime);
-    }
-    if (hudSheepHerded) {
-        hudSheepHerded.textContent = sheepHerded;
-    }
-    if (hudSheepTotal) {
+        if (hudTime) {
+            hudTime.textContent = formatTime(elapsedTime);
+        }
+        if (hudSheepHerded) {
+            hudSheepHerded.textContent = sheepHerded;
+        }
+        if (hudSheepTotal) {
             hudSheepTotal.textContent = sheepTotal;
         }
     }
 
     function setObjective(text) {
-    if (hudObjective) {
+        if (hudObjective) {
             hudObjective.textContent = text;
         }
     }
 
     function levelComplete() {
-    levelFinished = true;
-    refreshHud();
+        levelFinished = true;
+        refreshHud();
 
-    if (levelCompleteOverlay) {
-        if (levelCompleteText) {
-            levelCompleteText.textContent = 'Vse ovce so v ogradi!';
+        if (bgMusic) {
+            bgMusic.pause();
+            bgMusic.currentTime = 0;
         }
-        if (levelCompleteTime) {
-            levelCompleteTime.textContent = formatTime(elapsedTime);
-        }
+
+        if (levelCompleteOverlay) {
+            if (levelCompleteText) {
+                levelCompleteText.textContent = 'Vse ovce so v ogradi!';
+            }
+            if (levelCompleteTime) {
+                levelCompleteTime.textContent = formatTime(elapsedTime);
+            }
             levelCompleteOverlay.classList.remove('hidden');
         }
     }
 
     function setSheepCounts(herded, total) {
-    sheepHerded = Math.max(0, herded | 0);
-    sheepTotal = Math.max(0, total | 0);
-    refreshHud();
+        sheepHerded = Math.max(0, herded | 0);
+        sheepTotal = Math.max(0, total | 0);
+        refreshHud();
 
-    // 🔗 WIN CHECK:
-    // Ko boš imel sistem za ovce, iz njega kličeš:
-    //   gameLevel.setSheepCounts(trenutnoVOgradi, vseSkup);
-    // Če so vse ovce v ogradi, se levelComplete() sproži avtomatsko.
-    if (sheepTotal > 0 && sheepHerded >= sheepTotal && !levelFinished) {
+        if (sheepTotal > 0 && sheepHerded >= sheepTotal && !levelFinished) {
             levelComplete();
         }
     }
@@ -305,7 +283,7 @@ export async function startGame() {
         }
     }
 
-        if (levelCompleteRestart) {
+    if (levelCompleteRestart) {
         levelCompleteRestart.addEventListener('click', () => {
             window.location.reload();
         });
@@ -323,24 +301,18 @@ export async function startGame() {
         });
     }
 
-        window.addEventListener('keydown', (e) => {
+    window.addEventListener('keydown', (e) => {
         if (e.code === 'Escape' || e.code === 'KeyP') {
             setPaused(!paused);
         }
     });
 
-    // 🔗 API za kasneje, ko dodate ovce:
-    // npr. v svojem SheepManager.js:
-    //   gameLevel.setSheepCounts(trenutnoVOgradi, vseSkup);
-    //   gameLevel.setObjective("Še 3 ovce do ograje!");
-    //   // (po želji) gameLevel.levelComplete();
     window.gameLevel = {
         setSheepCounts,
         setObjective,
         levelComplete,
         setPaused,
     };
-
 
     const physics = new Physics(scene);
     for (const entity of scene) {
@@ -349,7 +321,6 @@ export async function startGame() {
             continue;
         }
 
-        // Calculate bounding boxes only for primitives with valid meshes
         const boxes = [];
         for (const primitive of model.primitives) {
             if (primitive.mesh && primitive.mesh.vertices && primitive.mesh.vertices.length > 0) {
@@ -368,7 +339,6 @@ export async function startGame() {
         }
         
         if (boxes.length === 0) {
-            // Skip entities without valid collision boxes (like parent nodes)
             continue;
         }
         
@@ -379,7 +349,6 @@ export async function startGame() {
             continue;
         }
         
-        // Detect walls - one dimension is much larger than the others
         const size = [
             entity.aabb.max[0] - entity.aabb.min[0],
             entity.aabb.max[1] - entity.aabb.min[1],
@@ -389,26 +358,20 @@ export async function startGame() {
         const maxSize = Math.max(...size);
         const minSize = Math.min(...size);
         
-        // Walls have one dimension much larger (ratio > 4)
         const isWall = (maxSize > minSize * 4);
         
-        // For walls, reduce the smaller dimensions but keep the thickness (smallest dimension)
         let scaleX = 0.7;
         let scaleY = 0.7;
         let scaleZ = 0.9;
         
         if (isWall) {
-            // Find which dimension is largest (the length) and reduce the others
             if (size[0] === maxSize) {
-                // Wall runs along X axis - reduce Y and Z but not too much
                 scaleY = 0.1;
-                scaleZ = 0.4; // Keep more Z thickness for better collision
+                scaleZ = 0.4;
             } else if (size[2] === maxSize) {
-                // Wall runs along Z axis - reduce X and Y but not too much
-                scaleX = 0.1; // Keep more X thickness for better collision
+                scaleX = 0.1;
                 scaleY = 0.4;
             } else {
-                // Wall runs along Y axis (vertical) - reduce X and Z
                 scaleX = 0.4;
                 scaleZ = 0.7;
             }
@@ -433,17 +396,14 @@ export async function startGame() {
             max: [center[0] + halfSize[0], center[1] + halfSize[1], center[2] + halfSize[2]],
         };
         
-        // Mark sheep mesh nodes as dynamic, all others as static
         if (sheepNodes.has(entity)) {
             if (!entity.customProperties) {
                 entity.customProperties = {};
             }
             entity.customProperties.isDynamic = true;
             
-            // Make AABB much taller for easier raycast detection
-            // Keep horizontal collision reasonable but make vertical hitbox tall
-            const yIncrease = 15; // Make it very tall for clicking
-            const xzIncrease = 2; // Wider horizontal detection
+            const yIncrease = 15;
+            const xzIncrease = 2;
             entity.aabb.min[0] -= xzIncrease;
             entity.aabb.max[0] += xzIncrease;
             entity.aabb.min[1] -= yIncrease;
@@ -452,7 +412,6 @@ export async function startGame() {
             entity.aabb.max[2] += xzIncrease;
             
         } else {
-            // Mark all entities with meshes as static for collision
             if (!entity.customProperties) {
                 entity.customProperties = {};
             }
@@ -460,11 +419,9 @@ export async function startGame() {
         }
     }
 
-    // Add camera to scene for physics calculations
     scene.push(camera);
     
-    // Initialize HUD with sheep count
-    setSheepCounts(0, 12); // 0 herded, 12 total sheep
+    setSheepCounts(0, 12);
     
     refreshHud();
 

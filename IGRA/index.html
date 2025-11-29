@@ -102,15 +102,26 @@
         <canvas></canvas>
     </div>
 
+    <audio id="bg-music" src="audio/bg-music.mp3" loop></audio>
+
     <!-- Start igre -->
     <script type="module">
         import { startGame } from './main.js';
 
         const btnStart = document.getElementById('btnStart');
         const startScreen = document.getElementById('startScreen');
+        const bgMusic = document.getElementById('bg-music');
 
         btnStart.addEventListener('click', () => {
             startScreen.style.display = 'none';
+
+            if (bgMusic) {
+                bgMusic.currentTime = 0;
+                bgMusic.play().catch(err => {
+                    console.warn('Ne mogu da pustim muziku:', err);
+                });
+            }
+
             startGame();
         });
     </script>
