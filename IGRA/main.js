@@ -28,15 +28,184 @@ export async function startGame() {
     // Load sheep
     const sheepNodes = await loadSheep(scene);
 
+    // Set player entity reference for all sheep (for flee behavior)
+    for (const sheep of sheepNodes) {
+        const sheepController = sheep.components?.find(c => c.constructor.name === 'SheepController');
+        if (sheepController) {
+            sheepController.playerEntity = camera;
+        }
+    }
+
     // Increase camera far clipping plane for better visibility
     const cameraComponent = camera.getComponentOfType(Camera);
     cameraComponent.far = 500; // Increase from default 100 to 500
 
-    camera.addComponent(new FirstPersonController(camera, canvas, {
+    const controller = new FirstPersonController(camera, canvas, {
         acceleration: 90,
         maxSpeed: 13,
         pointerSensitivity: 0.001,
-    }));
+    });
+    camera.addComponent(controller);
+    
+    // Raycast handler for launching sheep
+    controller.onRaycast = (origin, rayEnd, direction) => {
+        let closestSheep = null;
+        let closestDistance = Infinity;
+        let closestDistToCenter = Infinity;
+        let bestAlignment = -Infinity;
+        let hitCount = 0;
+        
+        // Calculate max distance from rayEnd
+        const maxDistance = Math.sqrt(
+            (rayEnd[0] - origin[0]) ** 2 +
+            (rayEnd[1] - origin[1]) ** 2 +
+            (rayEnd[2] - origin[2]) ** 2
+        );
+        
+        // Check ray intersection with all sheep
+        for (const sheep of sheepNodes) {
+            const sheepTransform = sheep.getComponentOfType(Transform);
+            if (!sheepTransform || !sheep.aabb) continue;
+            
+            // Ray-AABB intersection test
+            const t = rayAABBIntersection(origin, direction, sheep.aabb, sheepTransform);
+            if (t !== null && t <= maxDistance) {
+                hitCount++;
+                
+                const sheepPos = sheepTransform.translation;
+                
+                // Calculate distance from ray to sheep center
+                const rayPoint = [
+                    origin[0] + direction[0] * Math.max(t, 0),
+                    origin[1] + direction[1] * Math.max(t, 0),
+                    origin[2] + direction[2] * Math.max(t, 0)
+                ];
+                
+                const dx = rayPoint[0] - sheepPos[0];
+                const dy = rayPoint[1] - sheepPos[1];
+                const dz = rayPoint[2] - sheepPos[2];
+                const distToCenter = Math.sqrt(dx*dx + dy*dy + dz*dz);
+                
+                // Calculate alignment with look direction (dot product)
+                const toSheep = [
+                    sheepPos[0] - origin[0],
+                    sheepPos[1] - origin[1],
+                    sheepPos[2] - origin[2]
+                ];
+                const len = Math.sqrt(toSheep[0]**2 + toSheep[1]**2 + toSheep[2]**2);
+                if (len > 0) {
+                    toSheep[0] /= len;
+                    toSheep[1] /= len;
+                    toSheep[2] /= len;
+                }
+                const alignment = toSheep[0] * direction[0] + toSheep[1] * direction[1] + toSheep[2] * direction[2];
+                
+                // Pick sheep with best alignment to look direction (what you're aiming at)
+                // Only consider sheep in front of camera (alignment > 0.5) to avoid hitting sheep behind
+                if (alignment > 0.5 && alignment > bestAlignment) {
+                    bestAlignment = alignment;
+                    closestDistToCenter = distToCenter;
+                    closestDistance = t;
+                    closestSheep = sheep;
+                }
+            }
+        }
+        
+        // Launch the closest sheep if found
+        if (closestSheep) {
+            // Try to find SheepController on this node
+            let sheepController = closestSheep.components?.find(c => c.constructor.name === 'SheepController');
+            
+            // If not found, it might be a child mesh - search parent nodes
+            if (!sheepController) {
+                // Search all sheep nodes to find the one with a controller
+                for (const sheep of sheepNodes) {
+                    const controller = sheep.components?.find(c => c.constructor.name === 'SheepController');
+                    if (controller) {
+                        // Check if the hit node is this sheep or one of its children
+                        const sheepTransform = sheep.getComponentOfType(Transform);
+                        const hitTransform = closestSheep.getComponentOfType(Transform);
+                        
+                        // If positions are very close, it's the same sheep entity
+                        if (hitTransform && sheepTransform) {
+                            const dx = hitTransform.translation[0] - sheepTransform.translation[0];
+                            const dy = hitTransform.translation[1] - sheepTransform.translation[1];
+                            const dz = hitTransform.translation[2] - sheepTransform.translation[2];
+                            const dist = Math.sqrt(dx*dx + dy*dy + dz*dz);
+                            
+                            if (dist < 0.1) { // Same position = same sheep
+                                sheepController = controller;
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+            
+            if (sheepController) {
+                // Launch sheep (allow re-launching if already launched)
+                sheepController.launch(direction, 20);
+            }
+        }
+    };
+    
+    // Ray-AABB intersection function
+    function rayAABBIntersection(origin, direction, aabb, transform) {
+        // Get the center and half-extents of AABB
+        const center = [
+            (aabb.min[0] + aabb.max[0]) / 2,
+            (aabb.min[1] + aabb.max[1]) / 2,
+            (aabb.min[2] + aabb.max[2]) / 2
+        ];
+        const halfExtents = [
+            (aabb.max[0] - aabb.min[0]) / 2,
+            (aabb.max[1] - aabb.min[1]) / 2,
+            (aabb.max[2] - aabb.min[2]) / 2
+        ];
+        
+        // Transform to world space (AABB center + entity position)
+        const worldCenter = [
+            center[0] + transform.translation[0],
+            center[1] + transform.translation[1],
+            center[2] + transform.translation[2]
+        ];
+        
+        const worldMin = [
+            worldCenter[0] - halfExtents[0],
+            worldCenter[1] - halfExtents[1],
+            worldCenter[2] - halfExtents[2]
+        ];
+        const worldMax = [
+            worldCenter[0] + halfExtents[0],
+            worldCenter[1] + halfExtents[1],
+            worldCenter[2] + halfExtents[2]
+        ];
+        
+        let tmin = 0;
+        let tmax = Infinity;
+        
+        for (let i = 0; i < 3; i++) {
+            if (Math.abs(direction[i]) < 0.0001) {
+                // Ray is parallel to slab
+                if (origin[i] < worldMin[i] || origin[i] > worldMax[i]) {
+                    return null;
+                }
+            } else {
+                const t1 = (worldMin[i] - origin[i]) / direction[i];
+                const t2 = (worldMax[i] - origin[i]) / direction[i];
+                
+                tmin = Math.max(tmin, Math.min(t1, t2));
+                tmax = Math.min(tmax, Math.max(t1, t2));
+                
+                if (tmin > tmax) {
+                    return null;
+                }
+            }
+        }
+        
+        return tmin >= 0 ? tmin : null;
+    }
+    
     camera.aabb = {
         min: [-0.22, -2.6, -0.23],  // Wider and taller collision box for better detection
         max: [0.22, 0.4, 0.23],     
@@ -128,8 +297,10 @@ export async function startGame() {
         if (pauseMenu) {
             if (paused) {
                 pauseMenu.classList.remove('hidden');
+                document.exitPointerLock();
             } else {
                 pauseMenu.classList.add('hidden');
+                canvas.requestPointerLock();
             }
         }
     }
@@ -269,10 +440,14 @@ export async function startGame() {
             }
             entity.customProperties.isDynamic = true;
             
-            // Increase sheep's X and Z collision box for better detection
-            const xzIncrease = 0.4;
+            // Make AABB much taller for easier raycast detection
+            // Keep horizontal collision reasonable but make vertical hitbox tall
+            const yIncrease = 15; // Make it very tall for clicking
+            const xzIncrease = 2; // Wider horizontal detection
             entity.aabb.min[0] -= xzIncrease;
             entity.aabb.max[0] += xzIncrease;
+            entity.aabb.min[1] -= yIncrease;
+            entity.aabb.max[1] += yIncrease;
             entity.aabb.min[2] -= xzIncrease;
             entity.aabb.max[2] += xzIncrease;
             

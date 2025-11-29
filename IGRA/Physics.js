@@ -11,20 +11,71 @@ export class Physics {
     update(t, dt) {
         for (const entity of this.scene) {
             if (entity.customProperties?.isDynamic && entity.aabb) {
+                // Check if this is a launched sheep
+                const sheepController = entity.components?.find(c => c.constructor.name === 'SheepController');
+                const isLaunchedSheep = sheepController?.isLaunched;
+                const isInvulnerable = sheepController?.launchInvulnerable;
+                
                 for (const other of this.scene) {
                     if (entity !== other && other.aabb) {
+                        // Check if the OTHER entity is invulnerable (skip collision with it)
+                        const otherController = other.components?.find(c => c.constructor.name === 'SheepController');
+                        const otherInvulnerable = otherController?.launchInvulnerable;
+                        
+                        // Skip collision WITH invulnerable sheep (so others don't get pushed)
+                        if (otherInvulnerable) {
+                            continue;
+                        }
+                        
                         // Check collision with static entities
                         if (other.customProperties?.isStatic) {
-                            const collided = this.resolveCollision(entity, other);
+                            // Skip collision with camera/player (has no mesh)
+                            if (!other.aabb.min || !other.aabb.max) {
+                                continue;
+                            }
+                            
+                            // Store position before collision
+                            const transformBefore = entity.getComponentOfType(Transform);
+                            const posBefore = transformBefore ? vec3.clone(transformBefore.translation) : null;
+                            
+                            // Invulnerable sheep still collide with static objects (walls/trees)
+                            const collisionData = this.resolveCollision(entity, other);
+                            
+                            // If launched sheep hit static object, check if it was a real collision
+                            if (collisionData && isLaunchedSheep && posBefore) {
+                                const transformAfter = entity.getComponentOfType(Transform);
+                                const posAfter = transformAfter.translation;
+                                
+                                // Calculate how much the sheep was pushed by collision
+                                const pushDistance = vec3.distance(posBefore, posAfter);
+                                
+                                // Only stop launch if significantly pushed (real collision, not just AABB overlap)
+                                if (pushDistance > 0.1) {
+                                    sheepController.isLaunched = false;
+                                    sheepController.launchVelocity = [0, 0, 0];
+                                    const transform = entity.getComponentOfType(Transform);
+                                    if (transform && sheepController.baseY !== null) {
+                                        transform.translation[1] = sheepController.baseY;
+                                    }
+                                    sheepController.pickRandomDirection();
+                                }
+                            }
                         }
                         // Check collision with other dynamic entities (but only once per pair)
                         else if (other.customProperties?.isDynamic) {
+                            // Skip sheep-sheep collisions if either is invulnerable
+                            if (isInvulnerable) {
+                                continue;
+                            }
+                            
                             // Only process each pair once by checking scene index
                             const entityIndex = this.scene.indexOf(entity);
                             const otherIndex = this.scene.indexOf(other);
                             if (entityIndex < otherIndex) {
                                 // Resolve collision between two dynamic entities
-                                this.resolveCollision(entity, other);
+                                const collided = this.resolveCollision(entity, other);
+                                // Launched sheep don't stop on sheep collision (phase through during invulnerability)
+                                // They only stop when hitting walls or landing
                             }
                         }
                     }
