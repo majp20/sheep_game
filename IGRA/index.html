@@ -118,11 +118,17 @@
             if (bgMusic) {
                 bgMusic.currentTime = 0;
                 bgMusic.play().catch(err => {
-                    console.warn('Ne mogu da pustim muziku:', err);
+                    console.warn('Can not play music:', err);
                 });
             }
 
             startGame();
+            
+            // Lock pointer immediately after clicking play button
+            const canvas = document.querySelector('canvas');
+            if (canvas) {
+                canvas.requestPointerLock();
+            }
         });
     </script>
 </body>

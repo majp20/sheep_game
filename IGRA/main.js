@@ -39,8 +39,8 @@ export async function startGame() {
     cameraComponent.far = 500;
 
     const controller = new FirstPersonController(camera, canvas, {
-        acceleration: 90,
-        maxSpeed: 13,
+        acceleration: 50,
+        maxSpeed: 6,
         pointerSensitivity: 0.001,
     });
     camera.addComponent(controller);
@@ -274,11 +274,17 @@ export async function startGame() {
         paused = value;
         if (pauseMenu) {
             if (paused) {
+                if (bgMusic) {
+                    bgMusic.pause();
+                }
                 pauseMenu.classList.remove('hidden');
                 document.exitPointerLock();
             } else {
                 pauseMenu.classList.add('hidden');
                 canvas.requestPointerLock();
+                if (bgMusic) {
+                    bgMusic.play();
+                }
             }
         }
     }
@@ -396,21 +402,70 @@ export async function startGame() {
             max: [center[0] + halfSize[0], center[1] + halfSize[1], center[2] + halfSize[2]],
         };
         
+        // Check if this is a fence (Wood.001 material) - disable collision
+        // Trees use "Les" material (Bark014 texture) - keep collision
+        let isFence = false;
+        if (model && model.primitives) {
+            for (const primitive of model.primitives) {
+                if (primitive.material && primitive.material.name === 'Wood.001') {
+                    isFence = true;
+                    break;
+                }
+            }
+        }
+        
         if (sheepNodes.has(entity)) {
             if (!entity.customProperties) {
                 entity.customProperties = {};
             }
             entity.customProperties.isDynamic = true;
+            entity.customProperties.isSheep = true;  // Mark explicitly as sheep
             
-            const yIncrease = 15;
-            const xzIncrease = 2;
-            entity.aabb.min[0] -= xzIncrease;
-            entity.aabb.max[0] += xzIncrease;
-            entity.aabb.min[1] -= yIncrease;
-            entity.aabb.max[1] += yIncrease;
-            entity.aabb.min[2] -= xzIncrease;
-            entity.aabb.max[2] += xzIncrease;
+            // CRITICAL FIX: Make AABB local (centered at 0,0,0) not absolute world coordinates
+            // The AABB should be relative to the entity's transform, not absolute positions
+            const currentAABB = entity.aabb;
+            const center = [
+                (currentAABB.min[0] + currentAABB.max[0]) / 2,
+                (currentAABB.min[1] + currentAABB.max[1]) / 2,
+                (currentAABB.min[2] + currentAABB.max[2]) / 2
+            ];
+            const halfSize = [
+                (currentAABB.max[0] - currentAABB.min[0]) / 2,
+                (currentAABB.max[1] - currentAABB.min[1]) / 2,
+                (currentAABB.max[2] - currentAABB.min[2]) / 2
+            ];
             
+            // Moderate AABB expansion - large enough for raycast, fence collision handled by Physics.js
+            const yIncrease = 8;  // Moderate size for hit detection
+            const xzIncrease = 1.5;  // Moderate horizontal expansion
+            
+            // Create LOCAL AABB centered at origin
+            entity.aabb = {
+                min: [-(halfSize[0] + xzIncrease), -(halfSize[1] + yIncrease), -(halfSize[2] + xzIncrease)],
+                max: [halfSize[0] + xzIncrease, halfSize[1] + yIncrease, halfSize[2] + xzIncrease]
+            };
+            
+        } else if (isFence) {
+            // Fence - remove AABB entirely for sheep, keep for player
+            // Store original AABB for player collision only
+            entity.fenceOriginalAABB = {
+                min: [...entity.aabb.min],
+                max: [...entity.aabb.max]
+            };
+            // Keep player collision by using original AABB
+            if (!entity.customProperties) {
+                entity.customProperties = {};
+            }
+            entity.customProperties.isStatic = true;
+            entity.customProperties.isFence = true;  // Mark as fence for sheep collision skip
+            
+            // DEBUG: Log fence AABB
+            const fenceSize = [
+                entity.aabb.max[0] - entity.aabb.min[0],
+                entity.aabb.max[1] - entity.aabb.min[1],
+                entity.aabb.max[2] - entity.aabb.min[2]
+            ];
+            // console.log(`[FENCE AABB] Min: (${entity.aabb.min[0].toFixed(1)}, ${entity.aabb.min[1].toFixed(1)}, ${entity.aabb.min[2].toFixed(1)}) Max: (${entity.aabb.max[0].toFixed(1)}, ${entity.aabb.max[1].toFixed(1)}, ${entity.aabb.max[2].toFixed(1)}) Size: (${fenceSize[0].toFixed(1)} x ${fenceSize[1].toFixed(1)} x ${fenceSize[2].toFixed(1)})`);
         } else {
             if (!entity.customProperties) {
                 entity.customProperties = {};
@@ -421,7 +476,7 @@ export async function startGame() {
 
     scene.push(camera);
     
-    setSheepCounts(0, 12);
+    setSheepCounts(0, 14);
     
     refreshHud();
 

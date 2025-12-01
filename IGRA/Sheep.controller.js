@@ -9,17 +9,17 @@ export class SheepController {
         mapBounds = { min: [-115, -115], max: [33, 33] }, // Map boundaries
         pauseChance = 0.2, // Chance to pause instead of changing direction
         pauseDuration = 2, // Seconds to pause when stopping
-        bobHeight = 0.03, // How high the sheep bobs when walking
+        bobHeight = 0.04, // How high the sheep bobs when walking
         bobSpeed = 8, // How fast the bobbing animation is
         rotationSpeed = 5, // How fast the sheep rotates to face new direction (radians/sec)
         // Flee behavior settings
-        fleeRadius = 7, // Distance at which sheep start fleeing from player
-        safeRadius = 35, // Distance at which sheep stop fleeing
-        fleeSpeedMultiplier = 2.0, // Speed multiplier when fleeing (faster than normal)
+        fleeRadius = 10, // Distance at which sheep start fleeing from player
+        safeRadius = 15, // Distance at which sheep stop fleeing
+        fleeSpeedMultiplier = 6.0, // Speed multiplier when fleeing (faster than normal)
         // Panic behavior settings (after being hit)
         panicDuration = 2.0, // How long panic mode lasts (seconds)
-        panicSpeedMultiplier = 2.5, // Speed multiplier during panic (2-3× faster)
-        panicDirectionChangeInterval = 0.5, // How often to change direction during panic (0.4-0.8s)
+        panicSpeedMultiplier = 4.5, // Speed multiplier during panic (2-3× faster)
+        panicDirectionChangeInterval = 0.75, // How often to change direction during panic (0.4-0.8s)
     } = {}) {
         this.entity = entity;
         
@@ -39,6 +39,20 @@ export class SheepController {
         this.fleeSpeedMultiplier = fleeSpeedMultiplier;
         this.isFleeing = false;
         this.playerEntity = null; // Will be set by main.js
+        this.fleeCooldown = 0; // Cooldown timer for flee behavior
+        this.fleeCooldownDuration = 6.0; // 3 seconds cooldown between flee activations
+        
+        // Collision-aware flee properties (FIX FOR INVISIBLE WALL BUG)
+        this.fleeDirection = [0, 0]; // Stored flee direction (not recalculated every frame)
+        this.fleeDirectionUpdateTimer = 0; // Only recalculate direction periodically
+        this.fleeDirectionUpdateInterval = 0.1; // Update flee direction every 0.1s (faster response)
+        this.lastFleePosition = [0, 0]; // Track position to detect stuck state
+        this.fleeStuckCounter = 0; // Count frames where sheep barely moved
+        this.fleeStuckThreshold = 0.5; // If moved less than this distance, consider stuck
+        this.fleeForceEscapeTimer = 0; // Timer to force direction change if stuck too long
+        
+        // Fence zone detection (center area where sheep should not get stuck)
+        this.fenceZone = { min: [-70, -25], max: [-20, 15] }; // Central fence area
         
         // Panic behavior properties (after being hit)
         this.isPanic = false;
@@ -143,6 +157,26 @@ export class SheepController {
         const transform = this.entity.getComponentOfType(Transform);
         if (!transform) {
             return;
+        }
+        
+        // DEBUG: Log position and state periodically
+        this.debugTimer += dt;
+        if (this.debugTimer >= this.debugInterval) {
+            this.debugTimer = 0;
+            /*
+            const pos = transform.translation;
+            const inFenceZone = pos[0] > this.fenceZone.min[0] && 
+                               pos[0] < this.fenceZone.max[0] &&
+                               pos[2] > this.fenceZone.min[1] && 
+                               pos[2] < this.fenceZone.max[1];
+            const distToFence = Math.min(
+                Math.abs(pos[0] - this.fenceZone.min[0]),
+                Math.abs(pos[0] - this.fenceZone.max[0]),
+                Math.abs(pos[2] - this.fenceZone.min[1]),
+                Math.abs(pos[2] - this.fenceZone.max[1])
+            );
+            console.log(`[SHEEP] Pos: (${pos[0].toFixed(1)}, ${pos[2].toFixed(1)}) | State: ${this.isLaunched ? 'LAUNCH' : this.isPanic ? 'PANIC' : this.isFleeing ? 'FLEE' : 'WANDER'} | InFence: ${inFenceZone} | DistToFence: ${distToFence.toFixed(1)}`);
+            */
         }
 
         // Store base Y position on first update
@@ -265,6 +299,11 @@ export class SheepController {
             }
         }
 
+        // Update flee cooldown
+        if (this.fleeCooldown > 0) {
+            this.fleeCooldown -= dt;
+        }
+
         // ========================================================================
         // PRIORITY 3: FLEE STATE (when player is near - only if NOT panicking)
         // ========================================================================
@@ -275,85 +314,178 @@ export class SheepController {
                 const dz = playerTransform.translation[2] - transform.translation[2];
                 const distanceToPlayer = Math.sqrt(dx * dx + dz * dz);
                 
-                // Start fleeing if player is within fleeRadius (6-8 units)
-                if (distanceToPlayer < this.fleeRadius) {
+                // Start fleeing if player is within fleeRadius (6-8 units) and cooldown is over
+                if (distanceToPlayer < this.fleeRadius && this.fleeCooldown <= 0) {
                     if (!this.isFleeing) {
                         this.isFleeing = true;
                         this.isPaused = false; // Cancel any pause
                         this.pauseTimeRemaining = 0;
+                        
+                        // Initialize flee direction and tracking (FIX: store initial flee direction)
+                        this.fleeDirection = [
+                            -dx / distanceToPlayer,
+                            -dz / distanceToPlayer
+                        ];
+                        this.fleeDirectionUpdateTimer = 0;
+                        this.lastFleePosition = [transform.translation[0], transform.translation[2]];
+                        this.fleeStuckCounter = 0;
                     }
                 }
                 // Stop fleeing only when reaching safe distance (>15 units)
                 else if (distanceToPlayer > this.safeRadius && this.isFleeing) {
                     this.isFleeing = false;
+                    this.fleeCooldown = this.fleeCooldownDuration; // Start cooldown when stopping flee
                     this.pickRandomDirection();
                 }
             }
         }
 
         // ========================================================================
-        // FLEE MOVEMENT (if currently fleeing)
+        // FLEE MOVEMENT (if currently fleeing) - WITH COLLISION ESCAPE LOGIC
         // ========================================================================
+
         if (this.isFleeing && this.playerEntity) {
             const playerTransform = this.playerEntity.getComponentOfType(Transform);
             if (playerTransform) {
-                // CONSTANTLY recalculate flee direction (away from player)
                 const toPlayerX = playerTransform.translation[0] - transform.translation[0];
                 const toPlayerZ = playerTransform.translation[2] - transform.translation[2];
                 const distToPlayer = Math.sqrt(toPlayerX * toPlayerX + toPlayerZ * toPlayerZ);
                 
-                let fleeX = 0, fleeZ = 0;
-                if (distToPlayer > 0.01) {
-                    // Direction directly away from player
-                    fleeX = -toPlayerX / distToPlayer;
-                    fleeZ = -toPlayerZ / distToPlayer;
+                // Check if we've reached safe distance - stop fleeing and start cooldown
+                if (distToPlayer > this.safeRadius) {
+                    this.isFleeing = false;
+                    this.fleeCooldown = this.fleeCooldownDuration; // Start 3-second cooldown
+                    this.pickRandomDirection();
+                    // Don't return - fall through to normal wandering behavior
                 } else {
-                    // Player is on top of sheep, pick random direction
-                    const angle = Math.random() * Math.PI * 2;
-                    fleeX = Math.sin(angle);
-                    fleeZ = Math.cos(angle);
-                }
-                
-                // Store old position for collision detection
-                const oldX = transform.translation[0];
-                const oldZ = transform.translation[2];
-                
-                // Move at flee speed (1.5× or 2× normal speed)
-                const fleeSpeed = this.moveSpeed * this.fleeSpeedMultiplier;
-                transform.translation[0] += fleeX * fleeSpeed * dt;
-                transform.translation[2] += fleeZ * fleeSpeed * dt;
-                
-                // Apply faster bobbing during flee
-                this.walkTime += dt * 1.8;
-                const bobOffset = Math.sin(this.walkTime * this.bobSpeed) * this.bobHeight;
-                transform.translation[1] = this.baseY + bobOffset;
-                
-                // Rotate smoothly to face flee direction
-                const targetAngle = Math.atan2(fleeX, fleeZ);
-                const targetRotation = quat.create();
-                quat.rotateY(targetRotation, targetRotation, targetAngle);
-                const rotationLerpSpeed = this.rotationSpeed * 2.5 * dt; // Faster rotation when fleeing
-                const t = Math.min(rotationLerpSpeed, 1);
-                quat.slerp(transform.rotation, transform.rotation, targetRotation, t);
-                
-                // Apply boundary constraints with smart collision handling
-                const hitWall = this.applyBoundaryConstraintsWithBounce(transform);
-                
-                // If we hit a wall while fleeing, adjust direction to continue fleeing
-                if (hitWall) {
-                    // Calculate new flee direction that's still away from player but avoids wall
-                    const newToPlayerX = playerTransform.translation[0] - transform.translation[0];
-                    const newToPlayerZ = playerTransform.translation[2] - transform.translation[2];
-                    const newDist = Math.sqrt(newToPlayerX * newToPlayerX + newToPlayerZ * newToPlayerZ);
+                    // === COLLISION-AWARE FLEE LOGIC ===
                     
-                    if (newDist > 0.01) {
-                        // Recalculate flee direction after bounce
-                        this.currentDirection[0] = -newToPlayerX / newDist;
-                        this.currentDirection[1] = -newToPlayerZ / newDist;
+                    // Update flee direction update timer
+                    this.fleeDirectionUpdateTimer += dt;
+                    this.fleeForceEscapeTimer += dt;
+                    
+                    // Force faster updates if timer expired
+                    const updateNow = this.fleeDirectionUpdateTimer >= this.fleeDirectionUpdateInterval ||
+                                     this.fleeForceEscapeTimer > 1.0;
+                    
+                    if (updateNow) {
+                        this.fleeDirectionUpdateTimer = 0;
+                        
+                        // Check if sheep is stuck (barely moved since last check)
+                        const movedX = transform.translation[0] - this.lastFleePosition[0];
+                        const movedZ = transform.translation[2] - this.lastFleePosition[1];
+                        const distanceMoved = Math.sqrt(movedX * movedX + movedZ * movedZ);
+                        
+                        // Sheep is stuck if minimal movement
+                        const isStuck = distanceMoved < this.fleeStuckThreshold;
+                        
+                        if (isStuck) {
+                            this.fleeStuckCounter++;
+                            
+                            // Immediate escape if stuck twice
+                            if (this.fleeStuckCounter >= 2) {
+                                // Perpendicular escape from stuck direction
+                                const perpendicularOptions = [
+                                    [-this.fleeDirection[1], this.fleeDirection[0]],  // 90° left
+                                    [this.fleeDirection[1], -this.fleeDirection[0]],  // 90° right
+                                ];
+                                
+                                // Pick perpendicular direction that's also away from player
+                                let bestEscapeDir = perpendicularOptions[0];
+                                let bestScore = -Infinity;
+                                
+                                for (const escapeDir of perpendicularOptions) {
+                                    const awayScore = -(escapeDir[0] * toPlayerX + escapeDir[1] * toPlayerZ) / distToPlayer;
+                                    if (awayScore > bestScore) {
+                                        bestScore = awayScore;
+                                        bestEscapeDir = escapeDir;
+                                    }
+                                }
+                                
+                                this.fleeDirection[0] = bestEscapeDir[0];
+                                this.fleeDirection[1] = bestEscapeDir[1];
+                                
+                                this.fleeStuckCounter = 0;
+                                this.fleeForceEscapeTimer = 0;
+                            }
+                        } else {
+                            // Sheep moved successfully, reset stuck counter
+                            this.fleeStuckCounter = 0;
+                            this.fleeForceEscapeTimer = 0;
+                            
+                            // Normal flee direction update: away from player
+                            if (distToPlayer > 0.01) {
+                                const directAwayX = -toPlayerX / distToPlayer;
+                                const directAwayZ = -toPlayerZ / distToPlayer;
+                                
+                                // Blend current direction with away direction (smooth steering)
+                                const blendFactor = 0.4; // Increased responsiveness
+                                this.fleeDirection[0] = this.fleeDirection[0] * (1 - blendFactor) + directAwayX * blendFactor;
+                                this.fleeDirection[1] = this.fleeDirection[1] * (1 - blendFactor) + directAwayZ * blendFactor;
+                                
+                                // Normalize
+                                const len = Math.sqrt(this.fleeDirection[0] ** 2 + this.fleeDirection[1] ** 2);
+                                if (len > 0.01) {
+                                    this.fleeDirection[0] /= len;
+                                    this.fleeDirection[1] /= len;
+                                }
+                            }
+                        }
+                        
+                        // Update last position for next stuck check
+                        this.lastFleePosition[0] = transform.translation[0];
+                        this.lastFleePosition[1] = transform.translation[2];
                     }
+                    
+                    // Use stored flee direction (not recalculated every frame)
+                    let fleeX = this.fleeDirection[0];
+                    let fleeZ = this.fleeDirection[1];
+                    
+                    // Ensure direction is normalized
+                    const len = Math.sqrt(fleeX * fleeX + fleeZ * fleeZ);
+                    if (len > 0.01) {
+                        fleeX /= len;
+                        fleeZ /= len;
+                    } else {
+                        // Fallback: pick random direction if somehow zero
+                        const angle = Math.random() * Math.PI * 2;
+                        fleeX = Math.sin(angle);
+                        fleeZ = Math.cos(angle);
+                    }
+                    
+                    // Move at flee speed
+                    const fleeSpeed = this.moveSpeed * this.fleeSpeedMultiplier;
+                    const oldPosX = transform.translation[0];
+                    const oldPosZ = transform.translation[2];
+                    transform.translation[0] += fleeX * fleeSpeed * dt;
+                    transform.translation[2] += fleeZ * fleeSpeed * dt;
+                    
+                    // Apply faster bobbing during flee
+                    this.walkTime += dt * 1.8;
+                    const bobOffset = Math.sin(this.walkTime * this.bobSpeed) * this.bobHeight;
+                    transform.translation[1] = this.baseY + bobOffset;
+                    
+                    // Rotate smoothly to face flee direction
+                    const targetAngle = Math.atan2(fleeX, fleeZ);
+                    const targetRotation = quat.create();
+                    quat.rotateY(targetRotation, targetRotation, targetAngle);
+                    const rotationLerpSpeed = this.rotationSpeed * 2.5 * dt;
+                    const t = Math.min(rotationLerpSpeed, 1);
+                    quat.slerp(transform.rotation, transform.rotation, targetRotation, t);
+                    
+                    // Apply boundary constraints
+                    const hitWall = this.applyBoundaryConstraintsWithBounce(transform);
+                    
+                    // If we hit a wall, immediately adjust flee direction
+                    if (hitWall) {
+                        // Force immediate direction recalculation on next frame
+                        this.fleeDirectionUpdateTimer = this.fleeDirectionUpdateInterval;
+                        // Mark as potentially stuck
+                        this.fleeStuckCounter++;
+                    }
+                    
+                    return; // Skip wandering behavior
                 }
-                
-                return; // Skip wandering behavior
             }
         }
 

@@ -34,6 +34,12 @@ export class Physics {
                                 continue;
                             }
                             
+                            // Skip collision with fence for sheep (check multiple ways)
+                            const isSheep = sheepController !== undefined || entity.customProperties?.isSheep === true;
+                            if (isSheep && other.customProperties?.isFence === true) {
+                                continue;
+                            }
+                            
                             // Store position before collision
                             const transformBefore = entity.getComponentOfType(Transform);
                             const posBefore = transformBefore ? vec3.clone(transformBefore.translation) : null;

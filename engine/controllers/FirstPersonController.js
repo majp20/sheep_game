@@ -34,7 +34,7 @@ export class FirstPersonController {
         this.attack = attack;
         this.distance = distance;
         this.attackCooldown = 0; // Cooldown timer in seconds
-        this.attackCooldownDuration = 4; // 1.5 second cooldown to prevent spam
+        this.attackCooldownDuration = 3; 
 
         this.initHandlers();
     }
