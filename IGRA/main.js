@@ -40,7 +40,7 @@ export async function startGame() {
 
     const controller = new FirstPersonController(camera, canvas, {
         acceleration: 50,
-        maxSpeed: 6,
+        maxSpeed: 20,
         pointerSensitivity: 0.001,
     });
     camera.addComponent(controller);
@@ -402,17 +402,10 @@ export async function startGame() {
             max: [center[0] + halfSize[0], center[1] + halfSize[1], center[2] + halfSize[2]],
         };
         
-        // Check if this is a fence (Wood.001 material) - disable collision
-        // Trees use "Les" material (Bark014 texture) - keep collision
-        let isFence = false;
-        if (model && model.primitives) {
-            for (const primitive of model.primitives) {
-                if (primitive.material && primitive.material.name === 'Wood.001') {
-                    isFence = true;
-                    break;
-                }
-            }
-        }
+        // Check if this is a fence by entity name
+        let isFence = (entity.name === 'FENCE');
+        let isSeno = (entity.name === 'seno' || entity.name === 'Seno' || entity.name === 'SENO');
+        
         
         if (sheepNodes.has(entity)) {
             if (!entity.customProperties) {
@@ -446,26 +439,18 @@ export async function startGame() {
             };
             
         } else if (isFence) {
-            // Fence - remove AABB entirely for sheep, keep for player
-            // Store original AABB for player collision only
-            entity.fenceOriginalAABB = {
-                min: [...entity.aabb.min],
-                max: [...entity.aabb.max]
-            };
-            // Keep player collision by using original AABB
+            // Fence is just a regular static wall - no special treatment
             if (!entity.customProperties) {
                 entity.customProperties = {};
             }
             entity.customProperties.isStatic = true;
-            entity.customProperties.isFence = true;  // Mark as fence for sheep collision skip
-            
-            // DEBUG: Log fence AABB
-            const fenceSize = [
-                entity.aabb.max[0] - entity.aabb.min[0],
-                entity.aabb.max[1] - entity.aabb.min[1],
-                entity.aabb.max[2] - entity.aabb.min[2]
-            ];
-            // console.log(`[FENCE AABB] Min: (${entity.aabb.min[0].toFixed(1)}, ${entity.aabb.min[1].toFixed(1)}, ${entity.aabb.min[2].toFixed(1)}) Max: (${entity.aabb.max[0].toFixed(1)}, ${entity.aabb.max[1].toFixed(1)}, ${entity.aabb.max[2].toFixed(1)}) Size: (${fenceSize[0].toFixed(1)} x ${fenceSize[1].toFixed(1)} x ${fenceSize[2].toFixed(1)})`);
+        } else if (isSeno) {
+            // Seno (hay) - sheep stop when stepping on it
+            if (!entity.customProperties) {
+                entity.customProperties = {};
+            }
+            entity.customProperties.isStatic = true;
+            entity.customProperties.isSeno = true;
         } else {
             if (!entity.customProperties) {
                 entity.customProperties = {};

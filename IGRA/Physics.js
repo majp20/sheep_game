@@ -34,10 +34,39 @@ export class Physics {
                                 continue;
                             }
                             
-                            // Skip collision with fence for sheep (check multiple ways)
+                            // Check if sheep stepped on seno (hay)
                             const isSheep = sheepController !== undefined || entity.customProperties?.isSheep === true;
-                            if (isSheep && other.customProperties?.isFence === true) {
-                                continue;
+                            if (isSheep && other.customProperties?.isSeno) {
+                                const sheepAABB = this.getTransformedAABB(entity);
+                                const senoAABB = this.getTransformedAABB(other);
+                                
+                                // Check 2D overlap on XZ plane (ignore Y axis since seno is flat)
+                                const xOverlap = sheepAABB.min[0] <= senoAABB.max[0] && sheepAABB.max[0] >= senoAABB.min[0];
+                                const zOverlap = sheepAABB.min[2] <= senoAABB.max[2] && sheepAABB.max[2] >= senoAABB.min[2];
+                                
+                                // Check if sheep is on or near the ground (within 1 unit of seno Y level)
+                                const yNearGround = sheepAABB.min[1] <= senoAABB.max[1] + 1.0;
+                                
+                                const isOnSeno = xOverlap && zOverlap && yNearGround;
+                                
+                                if (isOnSeno) {
+                                    // Mark sheep as being on seno and store seno boundaries
+                                    if (sheepController) {
+                                        sheepController.isOnSeno = true;
+                                        sheepController.senoBounds = {
+                                            min: [senoAABB.min[0], senoAABB.min[2]],
+                                            max: [senoAABB.max[0], senoAABB.max[2]]
+                                        };
+                                        
+                                        // Cancel panic/flee/launch states when entering seno
+                                        sheepController.isLaunched = false;
+                                        sheepController.isPanic = false;
+                                        sheepController.isFleeing = false;
+                                        sheepController.launchVelocity = [0, 0, 0];
+                                    }
+                                    // Skip collision so sheep don't get pushed off
+                                    continue;
+                                }
                             }
                             
                             // Store position before collision
@@ -45,26 +74,50 @@ export class Physics {
                             const posBefore = transformBefore ? vec3.clone(transformBefore.translation) : null;
                             
                             // Invulnerable sheep still collide with static objects (walls/trees)
-                            const collisionData = this.resolveCollision(entity, other);
-                            
-                            // If launched sheep hit static object, check if it was a real collision
-                            if (collisionData && isLaunchedSheep && posBefore) {
-                                const transformAfter = entity.getComponentOfType(Transform);
-                                const posAfter = transformAfter.translation;
+                            // For fast-moving entities, check intermediate positions to prevent clipping
+                            let collisionData = false;
+                            if (posBefore) {
+                                const currentPos = transformBefore.translation;
+                                const moveDistance = vec3.distance(posBefore, currentPos);
                                 
-                                // Calculate how much the sheep was pushed by collision
-                                const pushDistance = vec3.distance(posBefore, posAfter);
-                                
-                                // Only stop launch if significantly pushed (real collision, not just AABB overlap)
-                                if (pushDistance > 0.1) {
-                                    sheepController.isLaunched = false;
-                                    sheepController.launchVelocity = [0, 0, 0];
-                                    const transform = entity.getComponentOfType(Transform);
-                                    if (transform && sheepController.baseY !== null) {
-                                        transform.translation[1] = sheepController.baseY;
+                                // If entity moved far in one frame, use swept collision detection
+                                if (moveDistance > 2.0) {
+                                    // Check collision at intermediate positions
+                                    const steps = Math.ceil(moveDistance / 2.0);
+                                    for (let i = 0; i <= steps; i++) {
+                                        const t = i / steps;
+                                        const intermediatePos = vec3.create();
+                                        vec3.lerp(intermediatePos, posBefore, currentPos, t);
+                                        
+                                        // Temporarily set position to check collision
+                                        const originalPos = vec3.clone(transformBefore.translation);
+                                        vec3.copy(transformBefore.translation, intermediatePos);
+                                        
+                                        if (this.resolveCollision(entity, other)) {
+                                            collisionData = true;
+                                            break; // Stop at first collision
+                                        }
+                                        
+                                        // Restore position if no collision at this step
+                                        vec3.copy(transformBefore.translation, originalPos);
                                     }
-                                    sheepController.pickRandomDirection();
+                                } else {
+                                    // Normal collision check for slow movement
+                                    collisionData = this.resolveCollision(entity, other);
                                 }
+                            } else {
+                                collisionData = this.resolveCollision(entity, other);
+                            }
+                            
+                            // If launched sheep hit static object, stop launch
+                            if (collisionData && isLaunchedSheep) {
+                                sheepController.isLaunched = false;
+                                sheepController.launchVelocity = [0, 0, 0];
+                                const transform = entity.getComponentOfType(Transform);
+                                if (transform && sheepController.baseY !== null) {
+                                    transform.translation[1] = sheepController.baseY;
+                                }
+                                sheepController.pickRandomDirection();
                             }
                         }
                         // Check collision with other dynamic entities (but only once per pair)
@@ -78,8 +131,18 @@ export class Physics {
                             const entityIndex = this.scene.indexOf(entity);
                             const otherIndex = this.scene.indexOf(other);
                             if (entityIndex < otherIndex) {
-                                // Resolve collision between two dynamic entities
-                                const collided = this.resolveCollision(entity, other);
+                                // Check if both sheep are on seno - if so, they can still collide with each other
+                                const isEntityOnSeno = sheepController?.isOnSeno;
+                                const isOtherOnSeno = otherController?.isOnSeno;
+                                
+                                // Allow collision unless one is on seno and the other is not
+                                // (prevents normal sheep from pushing seno sheep, but allows seno sheep to collide with each other)
+                                const shouldCollide = (isEntityOnSeno && isOtherOnSeno) || (!isEntityOnSeno && !isOtherOnSeno);
+                                
+                                if (shouldCollide) {
+                                    // Resolve collision between two dynamic entities
+                                    const collided = this.resolveCollision(entity, other);
+                                }
                                 // Launched sheep don't stop on sheep collision (phase through during invulnerability)
                                 // They only stop when hitting walls or landing
                             }
@@ -166,9 +229,7 @@ export class Physics {
         const bBox = this.getTransformedAABB(b);
 
         // Check if there is collision.
-        const isColliding = this.aabbIntersection(aBox, bBox);
-        
-        // Debug logging for dynamic-dynamic collisions
+        const isColliding = this.aabbIntersection(aBox, bBox);   
  
         if (!isColliding) {
             return false;

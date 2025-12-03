@@ -14,11 +14,11 @@ export class SheepController {
         rotationSpeed = 5, // How fast the sheep rotates to face new direction (radians/sec)
         // Flee behavior settings
         fleeRadius = 10, // Distance at which sheep start fleeing from player
-        safeRadius = 15, // Distance at which sheep stop fleeing
-        fleeSpeedMultiplier = 6.0, // Speed multiplier when fleeing (faster than normal)
+        safeRadius = 18, // Distance at which sheep stop fleeing
+        fleeSpeedMultiplier = 5.0, // Speed multiplier when fleeing (faster than normal)
         // Panic behavior settings (after being hit)
-        panicDuration = 2.0, // How long panic mode lasts (seconds)
-        panicSpeedMultiplier = 4.5, // Speed multiplier during panic (2-3× faster)
+        panicDuration = 1.3, // How long panic mode lasts (seconds)
+        panicSpeedMultiplier = 3.5, // Speed multiplier during panic (2-3× faster)
         panicDirectionChangeInterval = 0.75, // How often to change direction during panic (0.4-0.8s)
     } = {}) {
         this.entity = entity;
@@ -81,6 +81,10 @@ export class SheepController {
         this.baseY = null; // Store the base Y position
         this.targetRotation = null; // Target rotation quaternion
         this.launchInvulnerable = false;
+        
+        // Seno (hay) state - set by Physics.js
+        this.isOnSeno = false;
+        this.senoBounds = null; // { min: [x, z], max: [x, z] }
         
         // Initialize with random direction
         this.pickRandomDirection();
@@ -159,25 +163,6 @@ export class SheepController {
             return;
         }
         
-        // DEBUG: Log position and state periodically
-        this.debugTimer += dt;
-        if (this.debugTimer >= this.debugInterval) {
-            this.debugTimer = 0;
-            /*
-            const pos = transform.translation;
-            const inFenceZone = pos[0] > this.fenceZone.min[0] && 
-                               pos[0] < this.fenceZone.max[0] &&
-                               pos[2] > this.fenceZone.min[1] && 
-                               pos[2] < this.fenceZone.max[1];
-            const distToFence = Math.min(
-                Math.abs(pos[0] - this.fenceZone.min[0]),
-                Math.abs(pos[0] - this.fenceZone.max[0]),
-                Math.abs(pos[2] - this.fenceZone.min[1]),
-                Math.abs(pos[2] - this.fenceZone.max[1])
-            );
-            console.log(`[SHEEP] Pos: (${pos[0].toFixed(1)}, ${pos[2].toFixed(1)}) | State: ${this.isLaunched ? 'LAUNCH' : this.isPanic ? 'PANIC' : this.isFleeing ? 'FLEE' : 'WANDER'} | InFence: ${inFenceZone} | DistToFence: ${distToFence.toFixed(1)}`);
-            */
-        }
 
         // Store base Y position on first update
         if (this.baseY === null) {
@@ -564,19 +549,22 @@ export class SheepController {
         const x = transform.translation[0];
         const z = transform.translation[2];
 
-        if (x < this.mapBounds.min[0]) {
-            transform.translation[0] = this.mapBounds.min[0];
+        // If sheep is on seno, use seno bounds instead of map bounds
+        const bounds = this.isOnSeno && this.senoBounds ? this.senoBounds : this.mapBounds;
+
+        if (x < bounds.min[0]) {
+            transform.translation[0] = bounds.min[0];
             this.currentDirection[0] = Math.abs(this.currentDirection[0]);
-        } else if (x > this.mapBounds.max[0]) {
-            transform.translation[0] = this.mapBounds.max[0];
+        } else if (x > bounds.max[0]) {
+            transform.translation[0] = bounds.max[0];
             this.currentDirection[0] = -Math.abs(this.currentDirection[0]);
         }
 
-        if (z < this.mapBounds.min[1]) {
-            transform.translation[2] = this.mapBounds.min[1];
+        if (z < bounds.min[1]) {
+            transform.translation[2] = bounds.min[1];
             this.currentDirection[1] = Math.abs(this.currentDirection[1]);
-        } else if (z > this.mapBounds.max[1]) {
-            transform.translation[2] = this.mapBounds.max[1];
+        } else if (z > bounds.max[1]) {
+            transform.translation[2] = bounds.max[1];
             this.currentDirection[1] = -Math.abs(this.currentDirection[1]);
         }
     }
@@ -586,24 +574,27 @@ export class SheepController {
         const z = transform.translation[2];
         let hitWall = false;
 
+        // If sheep is on seno, use seno bounds instead of map bounds
+        const bounds = this.isOnSeno && this.senoBounds ? this.senoBounds : this.mapBounds;
+
         // Check X boundaries and bounce direction
-        if (x < this.mapBounds.min[0]) {
-            transform.translation[0] = this.mapBounds.min[0];
+        if (x < bounds.min[0]) {
+            transform.translation[0] = bounds.min[0];
             this.currentDirection[0] = Math.abs(this.currentDirection[0]); // Bounce right
             hitWall = true;
-        } else if (x > this.mapBounds.max[0]) {
-            transform.translation[0] = this.mapBounds.max[0];
+        } else if (x > bounds.max[0]) {
+            transform.translation[0] = bounds.max[0];
             this.currentDirection[0] = -Math.abs(this.currentDirection[0]); // Bounce left
             hitWall = true;
         }
 
         // Check Z boundaries and bounce direction
-        if (z < this.mapBounds.min[1]) {
-            transform.translation[2] = this.mapBounds.min[1];
+        if (z < bounds.min[1]) {
+            transform.translation[2] = bounds.min[1];
             this.currentDirection[1] = Math.abs(this.currentDirection[1]); // Bounce forward
             hitWall = true;
-        } else if (z > this.mapBounds.max[1]) {
-            transform.translation[2] = this.mapBounds.max[1];
+        } else if (z > bounds.max[1]) {
+            transform.translation[2] = bounds.max[1];
             this.currentDirection[1] = -Math.abs(this.currentDirection[1]); // Bounce backward
             hitWall = true;
         }

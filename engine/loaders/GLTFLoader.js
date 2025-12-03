@@ -445,6 +445,11 @@ export class GLTFLoader {
         }
 
         const entity = new Entity();
+        
+        // Store the node name from GLTF
+        if (gltfSpec.name) {
+            entity.name = gltfSpec.name;
+        }
 
         entity.addComponent(new Transform(gltfSpec));
 

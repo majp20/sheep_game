@@ -91,12 +91,12 @@
 		{
 			"mimeType":"image/jpeg",
 			"name":"Fabric019_1K-JPG_Color",
-			"uri":"Fabric019_1K-JPG_Color.jpg"
+			"uri":"textures/Fabric019_1K-JPG_Color.jpg"
 		},
 		{
 			"mimeType":"image/jpeg",
 			"name":"noge",
-			"uri":"noge.jpg"
+			"uri":"textures/noge.jpg"
 		}
 	],
 	"accessors":[
