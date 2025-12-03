@@ -4,8 +4,9 @@ import { Transform } from 'engine/core/core.js';
 
 export class Physics {
 
-    constructor(scene) {
+    constructor(scene, { countUp = null } = {}) {
         this.scene = scene;
+        this.countUp = countUp;
     }
 
     update(t, dt) {
@@ -52,6 +53,7 @@ export class Physics {
                                 if (isOnSeno) {
                                     // Mark sheep as being on seno and store seno boundaries
                                     if (sheepController) {
+                                        const fstTime = !sheepController.isOnSeno;
                                         sheepController.isOnSeno = true;
                                         sheepController.senoBounds = {
                                             min: [senoAABB.min[0], senoAABB.min[2]],
@@ -63,6 +65,9 @@ export class Physics {
                                         sheepController.isPanic = false;
                                         sheepController.isFleeing = false;
                                         sheepController.launchVelocity = [0, 0, 0];
+                                        if(fstTime && this.countUp) {
+                                            this.countUp(entity);
+                                        }
                                     }
                                     // Skip collision so sheep don't get pushed off
                                     continue;

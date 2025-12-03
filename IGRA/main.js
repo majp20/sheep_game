@@ -320,7 +320,12 @@ export async function startGame() {
         setPaused,
     };
 
-    const physics = new Physics(scene);
+    const physics = new Physics(scene, {
+        countUp: (sheep) => {
+            sheepHerded++;
+            setSheepCounts(sheepHerded, sheepTotal);
+        }
+    });
     for (const entity of scene) {
         const model = entity.getComponentOfType(Model);
         if (!model || !model.primitives) {
