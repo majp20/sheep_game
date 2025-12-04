@@ -30,6 +30,7 @@
                     <li><strong>W A S D</strong> – premikanje</li>
                     <li><strong>Miška</strong> – obračanje pogleda</li>
                     <li><strong>P</strong> – pavza</li>
+                    <li><strong>M</strong> – ugasni/prižgi glasbo</li>
                 </ul>
             </div>
 
@@ -60,12 +61,19 @@
         </div>
 
         <div class="hud-right">
+            <div class="hud-box mute">   
+                <button id="mute-btn" class="mute-button" title="Mute/Unmute">
+                    <img id="mute-icon-on" class="mute-icon" src="scene/images/speaker.png" alt="Sound On">
+                    <img id="mute-icon-off" class="mute-icon hidden" src="scene/images/mute.png" alt="Sound Off">
+                </button>
+            </div>
             <div class="hud-box objective">
                 <div class="hud-label">Cilj</div>
                 <div class="hud-objective-text" id="hud-objective">
                     Preženi vse ovce v ogrado.
                 </div>
             </div>
+
         </div>
     </div>
 
@@ -111,8 +119,27 @@
         const btnStart = document.getElementById('btnStart');
         const startScreen = document.getElementById('startScreen');
         const bgMusic = document.getElementById('bg-music');
+        const muteBtn = document.getElementById('mute-btn');
+        const muteIconOn = document.getElementById('mute-icon-on');
+        const muteIconOff = document.getElementById('mute-icon-off');
 
-        btnStart.addEventListener('click', () => {
+        let isMuted = false;
+        window.addEventListener('keydown', (e) => {
+            if (e.code === 'KeyM') {
+                isMuted = !isMuted;
+                bgMusic.muted = isMuted;
+                
+                if (isMuted) {
+                    muteIconOn.classList.add('hidden');
+                    muteIconOff.classList.remove('hidden');
+                } else {
+                    muteIconOn.classList.remove('hidden');
+                    muteIconOff.classList.add('hidden');
+                }
+            }
+        });
+
+        btnStart.addEventListener('click', async () => {
             startScreen.style.display = 'none';
 
             if (bgMusic) {
@@ -122,12 +149,15 @@
                 });
             }
 
-            startGame();
+            await startGame();
             
-            // Lock pointer immediately after clicking play button
+            // Lock pointer after game has started and canvas is ready
             const canvas = document.querySelector('canvas');
             if (canvas) {
-                canvas.requestPointerLock();
+                // Request pointer lock with a small delay to ensure canvas is interactive
+                setTimeout(() => {
+                    canvas.requestPointerLock();
+                }, 0.01);
             }
         });
     </script>

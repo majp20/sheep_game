@@ -4,9 +4,9 @@ import { Transform } from 'engine/core/core.js';
 
 export class Physics {
 
-    constructor(scene, { countUp = null } = {}) {
+    constructor(scene, { onSheepEnterSeno = null } = {}) {
         this.scene = scene;
-        this.countUp = countUp;
+        this.onSheepEnterSeno = onSheepEnterSeno;
     }
 
     update(t, dt) {
@@ -53,7 +53,7 @@ export class Physics {
                                 if (isOnSeno) {
                                     // Mark sheep as being on seno and store seno boundaries
                                     if (sheepController) {
-                                        const fstTime = !sheepController.isOnSeno;
+                                        const isFirstTime = !sheepController.isOnSeno;
                                         sheepController.isOnSeno = true;
                                         sheepController.senoBounds = {
                                             min: [senoAABB.min[0], senoAABB.min[2]],
@@ -65,8 +65,10 @@ export class Physics {
                                         sheepController.isPanic = false;
                                         sheepController.isFleeing = false;
                                         sheepController.launchVelocity = [0, 0, 0];
-                                        if(fstTime && this.countUp) {
-                                            this.countUp(entity);
+                                        
+                                        // Call callback on first entry
+                                        if (isFirstTime && this.onSheepEnterSeno) {
+                                            this.onSheepEnterSeno(entity);
                                         }
                                     }
                                     // Skip collision so sheep don't get pushed off
@@ -78,17 +80,22 @@ export class Physics {
                             const transformBefore = entity.getComponentOfType(Transform);
                             const posBefore = transformBefore ? vec3.clone(transformBefore.translation) : null;
                             
-                            // Invulnerable sheep still collide with static objects (walls/trees)
-                            // For fast-moving entities, check intermediate positions to prevent clipping
+                            // Check if this is a fence (critical for player collision)
+                            const isFence = other.name && other.name.toLowerCase().includes('fence');
+                            const isPlayer = entity === this.scene.find(e => e.getComponentOfType && e.getComponentOfType(Transform) && e.customProperties?.isDynamic && !e.customProperties?.isSheep);
+                            
+                            // For fast-moving entities OR player-fence collisions, check intermediate positions to prevent clipping
                             let collisionData = false;
                             if (posBefore) {
                                 const currentPos = transformBefore.translation;
                                 const moveDistance = vec3.distance(posBefore, currentPos);
                                 
-                                // If entity moved far in one frame, use swept collision detection
-                                if (moveDistance > 2.0) {
+                                // Use swept collision if: moving fast OR player colliding with fence
+                                const needsSweptCollision = moveDistance > 2.0 || (isPlayer && isFence);
+                                
+                                if (needsSweptCollision) {
                                     // Check collision at intermediate positions
-                                    const steps = Math.ceil(moveDistance / 2.0);
+                                    const steps = Math.ceil(Math.max(moveDistance / 0.5, 3)); // At least 3 steps for fence
                                     for (let i = 0; i <= steps; i++) {
                                         const t = i / steps;
                                         const intermediatePos = vec3.create();
@@ -148,8 +155,6 @@ export class Physics {
                                     // Resolve collision between two dynamic entities
                                     const collided = this.resolveCollision(entity, other);
                                 }
-                                // Launched sheep don't stop on sheep collision (phase through during invulnerability)
-                                // They only stop when hitting walls or landing
                             }
                         }
                     }

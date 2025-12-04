@@ -40,7 +40,7 @@ export async function startGame() {
 
     const controller = new FirstPersonController(camera, canvas, {
         acceleration: 50,
-        maxSpeed: 20,
+        maxSpeed: 12,  // Reduced from 20 to help prevent fence clipping
         pointerSensitivity: 0.001,
     });
     camera.addComponent(controller);
@@ -321,7 +321,7 @@ export async function startGame() {
     };
 
     const physics = new Physics(scene, {
-        countUp: (sheep) => {
+        onSheepEnterSeno: (sheep) => {
             sheepHerded++;
             setSheepCounts(sheepHerded, sheepTotal);
         }
@@ -369,13 +369,17 @@ export async function startGame() {
         const maxSize = Math.max(...size);
         const minSize = Math.min(...size);
         
+        // Check if this is a fence FIRST (before any scaling)
+        const isFence = entity.name && (entity.name.toLowerCase().includes('fence') || entity.name === 'FENCE');
+        const isSeno = entity.name && (entity.name.toLowerCase() === 'seno' || entity.name === 'SENO');
+        
         const isWall = (maxSize > minSize * 4);
         
         let scaleX = 0.7;
         let scaleY = 0.7;
         let scaleZ = 0.9;
         
-        if (isWall) {
+        if (isWall && !isFence) {
             if (size[0] === maxSize) {
                 scaleY = 0.1;
                 scaleZ = 0.4;
@@ -392,6 +396,28 @@ export async function startGame() {
             scaleX = scaleY = scaleZ = 0.9;
         }
         
+        // FENCE FIX: Prevent clipping with thick collision boxes and corner protection
+        // Player moves ~0.2 units/frame at maxSpeed=12. Fence must be significantly thicker.
+        if (isFence) {
+            // Make ALL dimensions generous to prevent corner clipping
+            if (size[0] === maxSize) {
+                // Fence runs along X axis
+                scaleX = 1.0;  // Keep full length
+                scaleY = 1.0;  // Keep full height
+                scaleZ = 2.5;  // MAJOR thickness increase (250%)
+            } else if (size[2] === maxSize) {
+                // Fence runs along Z axis  
+                scaleX = 2.5;  // MAJOR thickness increase (250%)
+                scaleY = 1.0;  // Keep full height
+                scaleZ = 1.0;  // Keep full length
+            } else {
+                // Unusual orientation - be very conservative
+                scaleX = 2.0;
+                scaleY = 1.0;
+                scaleZ = 2.0;
+            }
+        }
+        
         const center = [
             (entity.aabb.min[0] + entity.aabb.max[0]) / 2,
             (entity.aabb.min[1] + entity.aabb.max[1]) / 2,
@@ -406,10 +432,6 @@ export async function startGame() {
             min: [center[0] - halfSize[0], center[1] - halfSize[1], center[2] - halfSize[2]],
             max: [center[0] + halfSize[0], center[1] + halfSize[1], center[2] + halfSize[2]],
         };
-        
-        // Check if this is a fence by entity name
-        let isFence = (entity.name === 'FENCE');
-        let isSeno = (entity.name === 'seno' || entity.name === 'Seno' || entity.name === 'SENO');
         
         
         if (sheepNodes.has(entity)) {
@@ -444,7 +466,6 @@ export async function startGame() {
             };
             
         } else if (isFence) {
-            // Fence is just a regular static wall - no special treatment
             if (!entity.customProperties) {
                 entity.customProperties = {};
             }

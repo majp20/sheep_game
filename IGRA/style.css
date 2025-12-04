@@ -12,6 +12,19 @@ body {
     overflow: hidden;
 }
 
+/* Hide pointer lock message */
+body::before {
+    content: none !important;
+}
+
+*::-webkit-full-page-media, *:-webkit-full-page-media {
+    display: none;
+}
+
+::backdrop {
+    display: none;
+}
+
 /* Start Screen */
 #startScreen {
     position: fixed;
@@ -22,7 +35,7 @@ body {
     display: flex;
     align-items: center;
     justify-content: center;
-    background: url('scene/loadingScreen_background.png') center/cover no-repeat;
+    background: url('scene/images/loadingScreen_background.png') center/cover no-repeat;
     z-index: 1000;
     animation: fadeIn 0.5s ease-in;
 }
@@ -384,3 +397,49 @@ button:active {
         font-size: 1.4em;
     }
 }
+
+/* Mute Button */
+.hud-box.mute {
+    padding: 8px 12px;
+    min-width: auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.mute-button {
+    background: transparent;
+    border: none;
+    padding: 0;
+    cursor: pointer;
+    pointer-events: auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.3s ease;
+    box-shadow: none;
+    width: 32px;
+    height: 32px;
+}
+
+.mute-button:hover {
+    transform: scale(1.1);
+    box-shadow: none;
+    background: transparent;
+}
+
+.mute-button:active {
+    transform: scale(0.95);
+}
+
+.mute-icon {
+    width: 28px;
+    height: 28px;
+    transition: all 0.3s ease;
+    filter: brightness(0) invert(1);
+}
+
+.mute-button:hover .mute-icon {
+    filter: brightness(0) invert(1) brightness(1.3);
+}
+
