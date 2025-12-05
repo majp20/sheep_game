@@ -26,6 +26,18 @@ export async function startGame() {
     const camera = loader.loadNode('Camera');
     const bgMusic = document.getElementById('bg-music');
 
+    const sheepSoundPaths = [
+        'audio/sheep1.mp3',
+        'audio/sheep2.mp3',
+        'audio/sheep3.mp3',
+    ];
+
+    function playRandomSheepSound() {
+        const i = Math.floor(Math.random() * sheepSoundPaths.length);
+        const audio = new Audio(sheepSoundPaths[i]);
+        audio.play();
+    }
+
     const sheepNodes = await loadSheep(scene);
 
     for (const sheep of sheepNodes) {
@@ -128,6 +140,7 @@ export async function startGame() {
             
             if (sheepController) {
                 sheepController.launch(direction, 20);
+                playRandomSheepSound();
             }
         }
     };
@@ -444,12 +457,12 @@ export async function startGame() {
             // CRITICAL FIX: Make AABB local (centered at 0,0,0) not absolute world coordinates
             // The AABB should be relative to the entity's transform, not absolute positions
             const currentAABB = entity.aabb;
-            const center = [
+            const centerSheep = [
                 (currentAABB.min[0] + currentAABB.max[0]) / 2,
                 (currentAABB.min[1] + currentAABB.max[1]) / 2,
                 (currentAABB.min[2] + currentAABB.max[2]) / 2
             ];
-            const halfSize = [
+            const halfSizeSheep = [
                 (currentAABB.max[0] - currentAABB.min[0]) / 2,
                 (currentAABB.max[1] - currentAABB.min[1]) / 2,
                 (currentAABB.max[2] - currentAABB.min[2]) / 2
@@ -461,8 +474,8 @@ export async function startGame() {
             
             // Create LOCAL AABB centered at origin
             entity.aabb = {
-                min: [-(halfSize[0] + xzIncrease), -(halfSize[1] + yIncrease), -(halfSize[2] + xzIncrease)],
-                max: [halfSize[0] + xzIncrease, halfSize[1] + yIncrease, halfSize[2] + xzIncrease]
+                min: [-(halfSizeSheep[0] + xzIncrease), -(halfSizeSheep[1] + yIncrease), -(halfSizeSheep[2] + xzIncrease)],
+                max: [halfSizeSheep[0] + xzIncrease, halfSizeSheep[1] + yIncrease, halfSizeSheep[2] + xzIncrease]
             };
             
         } else if (isFence) {
