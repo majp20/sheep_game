@@ -15,7 +15,8 @@ import {
 import { Physics } from './Physics.js';
 import { loadSheep, setupSheepCollision } from './Sheep.js';
 
-export async function startGame() {
+// dodali smo parametar sheepGoal – koliko ovaca treba uterati u ogradu
+export async function startGame({ sheepGoal = 14 } = {}) {
     const canvas = document.querySelector('canvas');
     const renderer = new UnlitRenderer(canvas);
     await renderer.initialize();
@@ -221,7 +222,8 @@ export async function startGame() {
 
     let elapsedTime = 0;
     let sheepHerded = 0;
-    let sheepTotal = 14;
+    // umesto fiksnih 14, koristimo sheepGoal iz levela
+    let sheepTotal = sheepGoal;
     let levelFinished = false;
     let paused = false;
 
@@ -500,8 +502,12 @@ export async function startGame() {
 
     scene.push(camera);
     
-    setSheepCounts(0, 14);
-    
+    // početno stanje broja ovaca (0 u ogradi, cilj = sheepGoal)
+    setSheepCounts(0, sheepGoal);
+
+    // cilj tekst – možeš promeniti tekst po želji
+    setObjective(`Preženi ${sheepGoal} ovac v ogrado.`);
+
     refreshHud();
 
     function update(time, dt) {
